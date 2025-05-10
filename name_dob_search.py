@@ -960,12 +960,27 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
             lambda: api_client.search_by_name_dob(query_data["full_query"])
         )
 
-        # Извлекаем телефоны с приоритизацией
+        # Добавляем отладочное логирование
+        logger.info(f"Получен ответ API размером: {len(str(response))} байт")
+
+        # Извлекаем телефоны
         stage1_phones = extract_phones_from_api_response(response)
+        logger.info(f"Извлечено {len(stage1_phones)} телефонов: {stage1_phones[:5]}")
+
+        # Если найдены телефоны, конвертируем их в требуемый формат
+        phone_entries = []
+        for phone in stage1_phones:
+            # Добавляем каждый номер как словарь с необходимыми полями
+            phone_entries.append({
+                "phone": phone,
+                "priority": 5,  # Значение приоритета по умолчанию
+                "confirmed_count": 0,
+                "source": "direct_extract"
+            })
 
         # Если найдено несколько телефонов, посчитаем, сколько раз каждый встречается
         phone_counts = {}
-        for entry in stage1_phones:
+        for entry in phone_entries:
             phone = entry["phone"]
             if phone in phone_counts:
                 phone_counts[phone] += 1
@@ -973,7 +988,7 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                 phone_counts[phone] = 1
 
         # Дополним информацию о подтверждениях
-        for entry in stage1_phones:
+        for entry in phone_entries:
             entry["confirmed_count"] = phone_counts[entry["phone"]] - 1
 
         # Если есть телефоны с высоким приоритетом (8+), возвращаем лучший
@@ -996,25 +1011,38 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
 
         if emails:
             # Выполняем запрос по email
+            # Выполняем запрос по email
             email_response = await loop.run_in_executor(
                 None,
                 lambda: api_client.make_request(query=emails[0])
             )
 
             # Извлекаем телефоны из второго запроса
-            stage2_phones = extract_phones_from_api_response(email_response)
+            stage2_phones_raw = extract_phones_from_api_response(email_response)
+            logger.info(f"Извлечено {len(stage2_phones_raw)} телефонов из email-запроса")
+
+            # Конвертируем в нужный формат
+            stage2_phones = []
+            for phone in stage2_phones_raw:
+                stage2_phones.append({
+                    "phone": phone,
+                    "priority": 7,  # Более высокий приоритет для email
+                    "confirmed_count": 0,
+                    "source": {
+                        "_source_db": "email_search"
+                    }
+                })
 
             # Обновляем счетчики подтверждений для телефонов из первого этапа
-            for s1_entry in stage1_phones:
+            for s1_entry in phone_entries:
                 for s2_entry in stage2_phones:
                     if s1_entry["phone"] == s2_entry["phone"]:
                         s1_entry["confirmed_count"] = s1_entry.get("confirmed_count", 0) + 1
                         s2_entry["confirmed_by_stage1"] = True
 
             # Объединяем телефоны из обоих этапов
-            all_phones = stage1_phones + [p for p in stage2_phones if
-                                          not any(p["phone"] == s1p["phone"] for s1p in stage1_phones)]
-
+            all_phones = phone_entries + [p for p in stage2_phones if
+                                          not any(p["phone"] == s1p["phone"] for s1p in phone_entries)]
             # Сортируем по приоритету и подтверждениям
             all_phones.sort(key=lambda x: (x.get("confirmed_count", 0), x["priority"]), reverse=True)
 
@@ -1031,13 +1059,13 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                 }
 
         # Если даже после второго этапа ничего не найдено
-        if stage1_phones:
+        if phone_entries:
             # Возвращаем лучший из имеющихся телефонов
-            best_phone = stage1_phones[0]
+            best_phone = phone_entries[0]
             confidence = evaluate_phone_confidence(best_phone, query_data)
 
             return {
-                "phones": [p["phone"] for p in stage1_phones[:3]],
+                "phones": [p["phone"] for p in phone_entries[:3]],
                 "primary_phone": best_phone["phone"],
                 "method": "best_effort",
                 "confidence": confidence,
