@@ -19,7 +19,7 @@ from logger import logger, log_cache_hit, log_cache_miss
 
 
 class Database:
-    """Класс для работы с базой данных SQLite с учетом многопоточности"""
+    """Класс для работы с базой  данных SQLite с учетом многопоточности"""
 
     def __init__(self, db_path=DB_PATH):
         """

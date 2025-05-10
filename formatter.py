@@ -18,7 +18,7 @@ from logger import logger
 
 
 class ResponseFormatter:
-    """Класс для форматирования ответов API"""
+    """Класс для форматирования  ответов API"""
 
     @staticmethod
     def format_html(response: Dict[str, Any], vk_id: str) -> str:

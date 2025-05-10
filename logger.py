@@ -16,7 +16,7 @@ from config import LOG_LEVEL, LOG_FORMAT, LOG_FILE
 
 def setup_logger(name="LeakOSINTBot"):
     """
-    Настройка логгера с ротацией файлов
+    Настройка логгера  с ротацией файлов
 
     Args:
         name (str): Имя логгера

@@ -21,7 +21,7 @@ from pathlib import Path
 from datetime import datetime
 import traceback
 
-# Добавляем путь к проекту в PYTHONPATH, чтобы импортировать модули проекта
+# Добавляем путь к проекту в  PYTHONPATH, чтобы импортировать модули проекта
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Импортируем нужные модули из проекта

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения из .env файла, если он существует
+# Загружаем переменные окружения  из .env файла, если он существует
 env_path = Path(__file__).parent / '.env'
 if env_path.exists():
     load_dotenv(env_path)

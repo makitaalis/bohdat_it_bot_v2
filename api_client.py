@@ -801,7 +801,7 @@ def extract_phones_recursive(response_data, target_vk_id=None) -> List[str]:
                                 phones.add(digits)
                                 logger.debug(f"Найден телефон {digits} через регулярное выражение в пути {path}")
             except Exception as e:
-                # Игнорируем ошибки при обработке примитивных типов
+                # Игнорируем ошибки при  обработке примитивных типов
                 logger.debug(f"Ошибка при обработке примитивного типа: {e}")
 
     # Начинаем рекурсивный обход с защитой от ошибок

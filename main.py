@@ -53,7 +53,7 @@ class UserStates(StatesGroup):
     waiting_for_settings = State()  # Ожидание изменения настроек
 
 
-# Инициализация бота и диспетчера
+# Инициализация бота и  диспетчера
 bot = Bot(token=TELEGRAM_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)

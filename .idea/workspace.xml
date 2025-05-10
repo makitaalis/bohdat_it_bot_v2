@@ -4,27 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d93dbe10-623c-46f6-b9a2-6acafeb1226c" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/bohdat_it_bot_v1.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/advanced_search.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/analyze_api_response.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api_client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/file_processing.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/formatter.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/leakosint_cache.db" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logger.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/name_dob_search.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_api_client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_phone_extractor.py" afterDir="false" />
+    <list default="true" id="d93dbe10-623c-46f6-b9a2-6acafeb1226c" name="Changes" comment="доработка поиска по ФИ+дата">
+      <change beforePath="$PROJECT_DIR$/leakosint_cache.db" beforeDir="false" afterPath="$PROJECT_DIR$/leakosint_cache.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/name_dob_search.py" beforeDir="false" afterPath="$PROJECT_DIR$/name_dob_search.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -41,6 +23,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "makitaalis"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/makitaalis/bohdat_it_bot_v1.git",
+    "accountId": "915c2821-4ad4-4766-a0b3-e39cceb7005c"
+  }
+}]]></component>
   <component name="ProjectColorInfo"><![CDATA[{
   "associatedIndex": 2
 }]]></component>
@@ -112,7 +106,20 @@
       <option name="presentableId" value="Default" />
       <updated>1746816508217</updated>
     </task>
+    <task id="LOCAL-00001" summary="доработка поиска по ФИ+дата">
+      <option name="closed" value="true" />
+      <created>1746866779280</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1746866779280</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="доработка поиска по ФИ+дата" />
+    <option name="LAST_COMMIT_MESSAGE" value="доработка поиска по ФИ+дата" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

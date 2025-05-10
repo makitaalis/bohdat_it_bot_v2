@@ -1031,7 +1031,7 @@ def extract_phones_from_api_response(response, target_vk_id=None):
             logger.info(f"Обработка источника {source} с приоритетом {priority}")
             all_phones.extend(phones_by_source[source])
 
-        # Удаляем дубликаты, сохраняя порядок (сначала из приоритетных источников)
+        # Удаляем дубликаты,  сохраняя порядок (сначала из приоритетных источников)
         unique_phones = []
         for phone in all_phones:
             if phone not in unique_phones:
