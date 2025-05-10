@@ -26,14 +26,32 @@ from database import db
 
 # Приоритетные базы данных
 SOURCE_PRIORITY = {
-    "Gosuslugi 2024": 10,
-    "BolshayaPeremena": 9,
-    "AlfaBank 2023 v2": 8,
-    "ScanTour.ru": 7,
-    "Resh.Edu": 6,
-    "Dobro.ru": 5,
-    "TrudVsem.ru": 4,
-    # Можно добавить другие базы при необходимости
+    "Gosuslugi 2024": 15,
+    "BolshayaPeremena": 14,
+    "AlfaBank 2023 v2": 13,
+    "ScanTour.ru": 12,
+    "Resh.Edu": 11,
+    "ProPostuplenie.ru": 10,
+    "TrudVsem.ru": 9,
+    "Dobro.ru": 8,
+    "CDEK": 7,
+    "Whoosh-bike": 6,
+    "DNS (2022)": 5,
+    "SushiMaster.ru": 5,
+    "BurgerKing.ru": 5,
+    "GloriaJeans": 5,
+    "LeaderID": 4,
+    "Book24": 4,
+    "Rendez-Vous": 4,
+    "Zoloto585.ru": 4,
+    "Tokyo-city.ru": 3,
+    "Pikabu": 3,
+    "Metro-cc.ru": 3,
+    "Adengi.ru": 3,
+    "Mira1.ru": 3,
+    "Orteka.ru": 2,
+    "Oriflame.ru": 2,
+    "Artek": 2
 }
 
 

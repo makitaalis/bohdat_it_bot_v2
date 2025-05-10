@@ -714,12 +714,32 @@ def extract_phones_improved(response: dict, batch_vk_ids: List[str]) -> Dict[str
 
         # Приоритетные источники
         source_priority = {
-            "Gosuslugi 2024": 10,
-            "BolshayaPeremena": 9,
-            "AlfaBank 2023 v2": 8,
-            "Resh.Edu": 7,
-            "ProPostuplenie.ru": 6,
-            "TrudVsem.ru": 5
+            "Gosuslugi 2024": 15,
+            "BolshayaPeremena": 14,
+            "AlfaBank 2023 v2": 13,
+            "ScanTour.ru": 12,
+            "Resh.Edu": 11,
+            "ProPostuplenie.ru": 10,
+            "TrudVsem.ru": 9,
+            "Dobro.ru": 8,
+            "CDEK": 7,
+            "Whoosh-bike": 6,
+            "DNS (2022)": 5,
+            "SushiMaster.ru": 5,
+            "BurgerKing.ru": 5,
+            "GloriaJeans": 5,
+            "LeaderID": 4,
+            "Book24": 4,
+            "Rendez-Vous": 4,
+            "Zoloto585.ru": 4,
+            "Tokyo-city.ru": 3,
+            "Pikabu": 3,
+            "Metro-cc.ru": 3,
+            "Adengi.ru": 3,
+            "Mira1.ru": 3,
+            "Orteka.ru": 2,
+            "Oriflame.ru": 2,
+            "Artek": 2
         }
         priority = source_priority.get(db_name, 0)
 
@@ -774,6 +794,7 @@ def extract_phones_improved(response: dict, batch_vk_ids: List[str]) -> Dict[str
 def analyze_first_stage_results(response: dict, query: str) -> Tuple[List[str], List[str], float, List[str]]:
     """
     Анализирует результаты первого этапа поиска (по ФИО и дате рождения)
+    с улучшенным извлечением email, телефонов и других идентификаторов.
 
     Args:
         response (dict): Ответ от API
@@ -783,7 +804,7 @@ def analyze_first_stage_results(response: dict, query: str) -> Tuple[List[str], 
         Tuple[List[str], List[str], float, List[str]]:
             (emails, телефоны, уверенность, vk_ids)
     """
-    # Логируем полный ответ API для отладки на уровне DEBUG
+    # Логируем полный ответ API для отладки
     logger.debug(f"Анализ ответа API для запроса '{query}'")
 
     # Извлекаем компоненты из запроса
@@ -812,28 +833,52 @@ def analyze_first_stage_results(response: dict, query: str) -> Tuple[List[str], 
     # Используем улучшенную функцию для извлечения телефонов
     phones = extract_phones_from_api_response(response)
 
-    # ВАЖНО: Прямой поиск по шаблонам в текстовом представлении ответа
-    # Преобразуем ответ API в строку для текстового анализа
+    # УЛУЧШЕНИЕ 1: Преобразуем весь ответ API в строку для текстового анализа
     response_str = str(response)
 
-    # Поиск email с эмодзи
-    email_pattern = re.compile(r'📩Email:\s*([^\s,]+@[^\s,]+)')
-    email_matches = email_pattern.findall(response_str)
-    for email in email_matches:
-        if email not in emails:
-            emails.append(email)
-            logger.info(f"Найден email по паттерну: {email}")
+    # УЛУЧШЕНИЕ 2: Расширенный набор паттернов для поиска email
+    email_patterns = [
+        r'📩Email:\s*([^\s,]+@[^\s,]+)',
+        r'Email:\s*([^\s,]+@[^\s,]+)',
+        r'email:\s*([^\s,]+@[^\s,]+)',
+        r'E-mail:\s*([^\s,]+@[^\s,]+)',
+        r'e-mail:\s*([^\s,]+@[^\s,]+)',
+        r'[\'"]email[\'"]:\s*[\'"]([^\'"]+@[^\'"]+)[\'"]',
+        r'[\'"]Email[\'"]:\s*[\'"]([^\'"]+@[^\'"]+)[\'"]',
+        r'[^a-zA-Z0-9]([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'  # общий шаблон для email
+    ]
 
-    # Поиск VK ID и ссылок ВКонтакте
-    vk_id_pattern = re.compile(r'🆔VK ID:\s*([^\s]+)|vk\.com/id(\d+)|https://vk\.com/id(\d+)')
-    vk_matches = vk_id_pattern.findall(response_str)
-    for vk_match in vk_matches:
-        for group in vk_match:
-            if group and group.isdigit() and group not in vk_ids:
-                vk_ids.append(group)
-                logger.info(f"Найден VK ID по паттерну: {group}")
+    for pattern in email_patterns:
+        email_matches = re.findall(pattern, response_str, re.IGNORECASE)
+        for email in email_matches:
+            email = email.strip().lower()
+            if '@' in email and email not in emails:
+                emails.append(email)
+                logger.info(f"Найден email по паттерну: {email}")
 
-    # Если не нашли телефоны, но нашли email, устанавливаем уверенность для продолжения поиска
+    # УЛУЧШЕНИЕ 3: Расширенный набор паттернов для поиска VK ID
+    vk_patterns = [
+        r'🆔VK ID:\s*([^\s]+)',
+        r'VK ID:\s*([^\s]+)',
+        r'vk\.com/id(\d+)',
+        r'https://vk\.com/id(\d+)',
+        r'[\'"]vk_id[\'"]:\s*[\'"]([^\'"]+)[\'"]',
+        r'[\'"]VkID[\'"]:\s*[\'"]([^\'"]+)[\'"]',
+        r'[\'"]vk_com[\'"]:\s*[\'"]([^\'"]+)[\'"]'
+    ]
+
+    for pattern in vk_patterns:
+        vk_matches = re.findall(pattern, response_str, re.IGNORECASE)
+        for vk_match in vk_matches:
+            if vk_match and (vk_match.isdigit() or (
+                    isinstance(vk_match, str) and vk_match.startswith('id') and vk_match[2:].isdigit())):
+                # Нормализуем VK ID
+                vk_id = vk_match[2:] if isinstance(vk_match, str) and vk_match.startswith('id') else vk_match
+                if str(vk_id).isdigit() and vk_id not in vk_ids:
+                    vk_ids.append(str(vk_id))
+                    logger.info(f"Найден VK ID по паттерну: {vk_id}")
+
+    # Определяем уровень уверенности
     max_confidence = 0.0
     if phones:
         max_confidence = 0.8  # Высокая уверенность, если нашли телефоны
@@ -841,9 +886,9 @@ def analyze_first_stage_results(response: dict, query: str) -> Tuple[List[str], 
         max_confidence = 0.6  # Средняя уверенность для продолжения поиска
         logger.info(f"Не найдены телефоны, но найдены email: {emails}. Подготовка к второму этапу поиска.")
 
-    # Стандартный анализ структуры ответа, если уже есть что-то
+    # УЛУЧШЕНИЕ 4: Более глубокий анализ структуры ответа для поиска email
     if "List" in response and isinstance(response["List"], dict):
-        # Анализ баз данных в ответе
+        # Анализируем каждую базу данных в ответе
         for source_name, source_data in response["List"].items():
             if source_name == "No results found":
                 continue
@@ -854,13 +899,59 @@ def analyze_first_stage_results(response: dict, query: str) -> Tuple[List[str], 
                     if not isinstance(record, dict):
                         continue
 
-                    # Ищем email в записи
+                    # УЛУЧШЕНИЕ 5: Проверка всех полей на наличие email
                     for field, value in record.items():
-                        if "email" in field.lower() and isinstance(value, str) and '@' in value:
-                            email = value.lower()
+                        # Любые поля, которые могут содержать email
+                        if isinstance(value, str) and '@' in value and '.' in value:
+                            email_candidate = value.lower().strip()
+                            # Проверка на валидность email
+                            if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_candidate):
+                                if email_candidate not in emails:
+                                    emails.append(email_candidate)
+                                    logger.info(f"Найден email в поле {field}: {email_candidate}")
+
+                        # Конкретные поля с email
+                        if "email" in str(field).lower() and isinstance(value, str) and '@' in value:
+                            email = value.lower().strip()
                             if email not in emails:
                                 emails.append(email)
-                                logger.info(f"Найден email в структуре данных: {email}")
+                                logger.info(f"Найден email в поле {field}: {email}")
+
+    # УЛУЧШЕНИЕ 6: Оценка важности email на основе контекста запроса
+    if emails:
+        # Сортируем email по приоритету
+        email_priority = []
+        for email in emails:
+            priority = 0
+
+            # Высокий приоритет если email содержит фамилию или имя
+            if last_name and last_name in email.split('@')[0]:
+                priority += 10
+            if first_name and first_name in email.split('@')[0]:
+                priority += 5
+
+            # Приоритет по популярным доменам
+            domain = email.split('@')[-1].lower()
+            if domain in ['gmail.com', 'mail.ru', 'yandex.ru', 'bk.ru', 'inbox.ru', 'list.ru', 'icloud.com']:
+                priority += 3
+
+            email_priority.append((email, priority))
+
+        # Сортируем по приоритету (от высокого к низкому)
+        email_priority.sort(key=lambda x: x[1], reverse=True)
+
+        # Обновляем список email
+        emails = [e[0] for e in email_priority]
+        logger.info(f"Отсортированные email по приоритету: {emails}")
+
+    # УЛУЧШЕНИЕ 7: Проверка наличия более специфической информации для увеличения уверенности
+    if "List" in response and isinstance(response["List"], dict):
+        # Ищем приоритетные базы данных
+        priority_sources = ["Gosuslugi 2024", "BolshayaPeremena", "AlfaBank 2023 v2", "ScanTour.ru"]
+        for source_name in priority_sources:
+            if source_name in response["List"]:
+                max_confidence = max(max_confidence, 0.7)  # Повышаем уверенность
+                logger.info(f"Найдена приоритетная база данных {source_name}, уверенность повышена до {max_confidence}")
 
     logger.info(
         f"Результаты анализа первого этапа: {len(emails)} email, {len(phones)} телефонов, уверенность {max_confidence:.2f}")
@@ -960,7 +1051,8 @@ def analyze_second_stage_results(response: dict, original_query: str, email: str
 
 def extract_phones_from_api_response(response, target_vk_id=None):
     """
-    Извлечение телефонных номеров из ответа API с улучшенной обработкой ошибок.
+    Улучшенное извлечение телефонных номеров из ответа API с более агрессивным поиском
+    и поддержкой приоритетных баз данных.
 
     Args:
         response: Ответ API
@@ -970,29 +1062,107 @@ def extract_phones_from_api_response(response, target_vk_id=None):
         List[str]: Список найденных телефонных номеров
     """
     try:
-        logger.info("Начинаем извлечение телефонов из ответа API")
+        logger.info("Начинаем улучшенное извлечение телефонов из ответа API")
 
-        # Защита от неправильных типов
+        # УЛУЧШЕНИЕ 1: Расширенный список приоритетных баз данных
+        SOURCE_PRIORITY = {
+            "Gosuslugi 2024": 15,
+            "BolshayaPeremena": 14,
+            "AlfaBank 2023 v2": 13,
+            "ScanTour.ru": 12,
+            "Resh.Edu": 11,
+            "ProPostuplenie.ru": 10,
+            "TrudVsem.ru": 9,
+            "Dobro.ru": 8,
+            "CDEK": 7,
+            "Whoosh-bike": 6,
+            "DNS (2022)": 5,
+            "SushiMaster.ru": 5,
+            "BurgerKing.ru": 5,
+            "GloriaJeans": 5,
+            "LeaderID": 4,
+            "Book24": 4,
+            "Rendez-Vous": 4,
+            "Zoloto585.ru": 4,
+            "Tokyo-city.ru": 3,
+            "Pikabu": 3,
+            "Metro-cc.ru": 3,
+            "Adengi.ru": 3,
+            "Mira1.ru": 3,
+            "Orteka.ru": 2,
+            "Oriflame.ru": 2,
+            "Artek": 2
+        }
+
+        # УЛУЧШЕНИЕ 2: Проверка текстового представления на наличие пометки "Номер который нужно забирать"
+        response_str = str(response)
+        marked_phones = []
+
+        if "Номер который нужно забирать" in response_str:
+            logger.info("Найдена пометка 'Номер который нужно забирать'")
+
+            # Разные варианты паттернов для номеров с такой пометкой
+            marked_patterns = [
+                r'📞Телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                r'Телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                r'телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                r'\b(79\d{9})\b[^)]*Номер который нужно забирать'
+            ]
+
+            for pattern in marked_patterns:
+                matches = re.findall(pattern, response_str)
+                for match in matches:
+                    digits = ''.join(c for c in match if c.isdigit())
+                    if digits.startswith('79') and len(digits) == 11 and digits not in marked_phones:
+                        marked_phones.append(digits)
+                        logger.info(f"Найден приоритетный телефон с пометкой: {digits}")
+
+            # Если есть телефоны с пометкой, возвращаем их немедленно
+            if marked_phones:
+                logger.info(f"Возвращаем {len(marked_phones)} приоритетных телефонов с пометкой")
+                return marked_phones
+
+        # УЛУЧШЕНИЕ 3: Обработка нестандартных типов ответа
         if not isinstance(response, dict):
             logger.warning(f"Неожиданный тип ответа API: {type(response)}. Ожидался dict.")
-            # Преобразуем к строке и ищем телефоны с помощью регулярных выражений
+            # Поиск телефонов с помощью регулярных выражений в строковом представлении
             if response is not None:
-                response_str = str(response)
-                phone_matches = re.findall(r'(?<!\d)7\d{10}(?!\d)', response_str)
-                return [match for match in phone_matches if match.startswith('7') and len(match) == 11]
+                phone_patterns = [
+                    r'📞Телефон:\s*(\d+)',
+                    r'Телефон:\s*(\d+)',
+                    r'телефон:\s*(\d+)',
+                    r'Phone:\s*(\d+)',
+                    r'[\'"]phone[\'"]:\s*[\'"](\d+)[\'"]',
+                    r'[\'"]телефон[\'"]:\s*[\'"](\d+)[\'"]',
+                    r'\b(79\d{9})\b',  # Формат 79XXXXXXXXX
+                    r'\b(89\d{9})\b'  # Формат 89XXXXXXXXX
+                ]
+
+                found_phones = []
+                for pattern in phone_patterns:
+                    matches = re.findall(pattern, response_str)
+                    for match in matches:
+                        digits = ''.join(c for c in match if c.isdigit())
+                        if (digits.startswith('79') or digits.startswith('89')) and len(digits) == 11:
+                            # Нормализация номера (замена 8 на 7 в начале)
+                            if digits.startswith('8'):
+                                digits = '7' + digits[1:]
+                            if digits not in found_phones:
+                                found_phones.append(digits)
+
+                return found_phones
             return []
 
-        # Проверяем наличие ключа List
+        # Проверка структуры ответа
         if "List" not in response:
             logger.warning("Ключ 'List' отсутствует в ответе API")
             return extract_phones_recursive(response, target_vk_id)
 
-        # Проверяем тип данных для response["List"]
         if not isinstance(response["List"], dict):
             logger.warning(f"Неожиданный тип для response['List']: {type(response['List'])}. Ожидался dict.")
             return extract_phones_recursive(response, target_vk_id)
 
-        # Если структура правильная, извлекаем телефоны с учетом приоритетных источников
+        # УЛУЧШЕНИЕ 4: Более структурированный поиск телефонов по базам с учетом приоритетов
         all_phones = []
         phones_by_source = {}
 
@@ -1002,21 +1172,81 @@ def extract_phones_from_api_response(response, target_vk_id=None):
             if db_name == "No results found" or not isinstance(db_info, dict):
                 continue
 
-            # Проверяем наличие Data и тип данных
+            # Проверка наличия Data
             if "Data" not in db_info or not isinstance(db_info["Data"], list):
                 continue
 
-            # Извлекаем телефоны из данной базы
+            # УЛУЧШЕНИЕ 5: Проверка на наличие пометки в информации о базе
+            source_info_str = str(db_info)
+            if "Номер который нужно забирать" in source_info_str:
+                logger.info(f"Найдена пометка 'Номер который нужно забирать' в базе {db_name}")
+                marked_patterns = [
+                    r'📞Телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                    r'Телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                    r'телефон:\s*(\d+)[^)]*Номер который нужно забирать'
+                ]
+
+                for pattern in marked_patterns:
+                    matches = re.findall(pattern, source_info_str)
+                    for match in matches:
+                        digits = ''.join(c for c in match if c.isdigit())
+                        if digits.startswith('79') and len(digits) == 11 and digits not in marked_phones:
+                            marked_phones.append(digits)
+                            logger.info(f"Найден приоритетный телефон с пометкой в базе {db_name}: {digits}")
+
+                # Если есть телефоны с пометкой, возвращаем их
+                if marked_phones:
+                    logger.info(f"Возвращаем {len(marked_phones)} приоритетных телефонов с пометкой из базы {db_name}")
+                    return marked_phones
+
+            # УЛУЧШЕНИЕ 6: Прямой поиск телефонов в записях базы
             try:
                 logger.debug(f"Обработка базы данных: {db_name}")
-                source_phones = extract_phones_recursive(db_info["Data"], target_vk_id)
 
+                source_phones = []
+                for record in db_info["Data"]:
+                    if not isinstance(record, dict):
+                        continue
+
+                    # Ищем поля с телефонами
+                    for field_name, field_value in record.items():
+                        if not field_value:
+                            continue
+
+                        field_lower = field_name.lower()
+                        if "phone" in field_lower or "телефон" in field_lower or "тел" in field_lower:
+                            # Извлекаем только цифры
+                            digits = ''.join(c for c in str(field_value) if c.isdigit())
+
+                            # Проверяем формат (должен начинаться с 79 и иметь длину 11 символов)
+                            if (digits.startswith('79') or digits.startswith('89')) and len(digits) == 11:
+                                # Нормализация номера (замена 8 на 7 в начале)
+                                if digits.startswith('8'):
+                                    digits = '7' + digits[1:]
+
+                                # Проверяем, не содержит ли значение пометку
+                                if "Номер который нужно забирать" in str(field_value):
+                                    logger.info(f"Найден приоритетный телефон с пометкой в поле {field_name}: {digits}")
+                                    return [digits]  # Сразу возвращаем приоритетный телефон
+
+                                # Добавляем в список телефонов для текущей базы
+                                if digits not in source_phones:
+                                    source_phones.append(digits)
+
+                # Если нашли телефоны, сохраняем их
                 if source_phones:
                     phones_by_source[db_name] = source_phones
                     logger.info(f"Найдено {len(source_phones)} телефонов в базе {db_name}")
             except Exception as e:
                 logger.error(f"Ошибка при обработке базы {db_name}: {e}")
                 logger.error(traceback.format_exc())
+
+        # УЛУЧШЕНИЕ 7: Если не нашли телефоны в полях напрямую, используем рекурсивный метод
+        if not phones_by_source:
+            recursive_phones = extract_phones_recursive(response, target_vk_id)
+            if recursive_phones:
+                logger.info(f"Найдено {len(recursive_phones)} телефонов рекурсивным методом")
+                return recursive_phones
 
         # Сортируем источники по приоритету
         sorted_sources = sorted(
@@ -1031,7 +1261,7 @@ def extract_phones_from_api_response(response, target_vk_id=None):
             logger.info(f"Обработка источника {source} с приоритетом {priority}")
             all_phones.extend(phones_by_source[source])
 
-        # Удаляем дубликаты,  сохраняя порядок (сначала из приоритетных источников)
+        # Удаляем дубликаты, сохраняя порядок (сначала из приоритетных источников)
         unique_phones = []
         for phone in all_phones:
             if phone not in unique_phones:

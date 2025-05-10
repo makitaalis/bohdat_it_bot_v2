@@ -4,9 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d93dbe10-623c-46f6-b9a2-6acafeb1226c" name="Changes" comment="доработка поиска по ФИ+дата">
-      <change beforePath="$PROJECT_DIR$/leakosint_cache.db" beforeDir="false" afterPath="$PROJECT_DIR$/leakosint_cache.db" afterDir="false" />
+    <list default="true" id="d93dbe10-623c-46f6-b9a2-6acafeb1226c" name="Changes" comment="доработка поиска по ФИ+дата1">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/analyze_api_response.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/api_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/api_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/file_processing.py" beforeDir="false" afterPath="$PROJECT_DIR$/file_processing.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/name_dob_search.py" beforeDir="false" afterPath="$PROJECT_DIR$/name_dob_search.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_api_client.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_phone_extractor.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -114,12 +119,37 @@
       <option name="project" value="LOCAL" />
       <updated>1746866779280</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="доработка поиска по ФИ+дата">
+      <option name="closed" value="true" />
+      <created>1746871703340</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1746871703340</updated>
+    </task>
+    <task id="LOCAL-00003" summary="доработка поиска по ФИ+дата1">
+      <option name="closed" value="true" />
+      <created>1746871768034</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1746871768034</updated>
+    </task>
+    <task id="LOCAL-00004" summary="доработка поиска по ФИ+дата1">
+      <option name="closed" value="true" />
+      <created>1746879767891</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1746879767891</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="доработка поиска по ФИ+дата" />
-    <option name="LAST_COMMIT_MESSAGE" value="доработка поиска по ФИ+дата" />
+    <MESSAGE value="доработка поиска по ФИ+дата1" />
+    <option name="LAST_COMMIT_MESSAGE" value="доработка поиска по ФИ+дата1" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

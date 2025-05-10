@@ -8,12 +8,15 @@
 """
 import asyncio
 import re
+import traceback
+
 import json
 import logging
 from typing import Dict, List, Tuple, Any, Optional, Union
 from datetime import datetime
 
-from file_processing import extract_phones_from_api_response, evaluate_phone_confidence, extract_emails_from_response
+from file_processing import extract_phones_from_api_response, evaluate_phone_confidence, extract_emails_from_response, \
+    analyze_first_stage_results
 from logger import logger
 
 
@@ -934,20 +937,32 @@ def select_best_phone(scored_phones: List[Dict[str, Any]]) -> Optional[Dict[str,
 
 async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_client) -> Dict[str, Any]:
     """
-    Двухэтапный поиск телефона по имени и дате рождения
+    Улучшенный двухэтапный поиск телефона по имени и дате рождения
+
+    Args:
+        name (str): Имя в формате "Фамилия Имя [Отчество]"
+        birth_date (str): Дата рождения в формате "ДД.ММ.ГГГГ"
+        api_client: Экземпляр API клиента
+
+    Returns:
+        Dict[str, Any]: Результаты поиска
     """
     # Нормализация запроса
     name_parts = name.split()
     surname = name_parts[0] if name_parts else ""
     firstname = name_parts[1] if len(name_parts) > 1 else ""
+    patronymic = name_parts[2] if len(name_parts) > 2 else ""
 
     # Данные запроса для оценки уверенности
     query_data = {
         "surname": surname,
         "name": firstname,
+        "patronymic": patronymic,
         "birth_date": birth_date,
         "full_query": f"{name} {birth_date}"
     }
+
+    logger.info(f"Начинаем поиск по запросу: {query_data['full_query']}")
 
     # Этап 1: Поиск по ФИО и дате рождения
     try:
@@ -963,121 +978,288 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
         # Добавляем отладочное логирование
         logger.info(f"Получен ответ API размером: {len(str(response))} байт")
 
-        # Извлекаем телефоны
-        stage1_phones = extract_phones_from_api_response(response)
-        logger.info(f"Извлечено {len(stage1_phones)} телефонов: {stage1_phones[:5]}")
+        # УЛУЧШЕНИЕ 1: Сначала проверяем наличие пометки "Номер который нужно забирать"
+        response_str = str(response)
+        if "Номер который нужно забирать" in response_str:
+            logger.info("Найдена пометка 'Номер который нужно забирать' в ответе первого запроса")
 
-        # Если найдены телефоны, конвертируем их в требуемый формат
-        phone_entries = []
-        for phone in stage1_phones:
-            # Добавляем каждый номер как словарь с необходимыми полями
-            phone_entries.append({
-                "phone": phone,
-                "priority": 5,  # Значение приоритета по умолчанию
-                "confirmed_count": 0,
-                "source": "direct_extract"
-            })
+            marked_patterns = [
+                r'📞Телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                r'Телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                r'телефон:\s*(\d+)[^)]*Номер который нужно забирать',
+                r'\b(79\d{9})\b[^)]*Номер который нужно забирать'
+            ]
 
-        # Если найдено несколько телефонов, посчитаем, сколько раз каждый встречается
-        phone_counts = {}
-        for entry in phone_entries:
-            phone = entry["phone"]
-            if phone in phone_counts:
-                phone_counts[phone] += 1
-            else:
-                phone_counts[phone] = 1
+            marked_phones = []
+            for pattern in marked_patterns:
+                matches = re.findall(pattern, response_str)
+                for match in matches:
+                    digits = ''.join(c for c in match if c.isdigit())
+                    if digits.startswith('79') and len(digits) == 11 and digits not in marked_phones:
+                        marked_phones.append(digits)
+                        logger.info(f"Найден приоритетный телефон с пометкой: {digits}")
 
-        # Дополним информацию о подтверждениях
-        for entry in phone_entries:
-            entry["confirmed_count"] = phone_counts[entry["phone"]] - 1
-
-        # Если есть телефоны с высоким приоритетом (8+), возвращаем лучший
-        high_priority_phones = [p for p in phone_entries if p["priority"] >= 8]
-        if high_priority_phones:
-            best_phone = high_priority_phones[0]
-            confidence = evaluate_phone_confidence(best_phone, query_data)
-
-            if confidence >= 0.8:  # Высокая уверенность
+            if marked_phones:
                 return {
-                    "phones": [best_phone["phone"]],
-                    "primary_phone": best_phone["phone"],
-                    "method": "priority_database",
-                    "confidence": confidence,
-                    "source": best_phone["source"]
+                    "phones": marked_phones,
+                    "primary_phone": marked_phones[0],
+                    "method": "marked_phone_first_stage",
+                    "confidence": 0.98,  # Очень высокая уверенность
+                    "source": "first_stage_marked"
                 }
 
-        # Этап 2: Если нет уверенного результата, ищем email для второго запроса
-        emails = extract_emails_from_response(response)
+        # УЛУЧШЕНИЕ 2: Поиск телефонов в первом запросе используя улучшенную функцию извлечения
+        stage1_phones = extract_phones_from_api_response(response)
 
-        if emails:
-            # Выполняем запрос по email
-            # Выполняем запрос по email
-            email_response = await loop.run_in_executor(
+        # Если нашли телефоны в первом запросе
+        if stage1_phones:
+            logger.info(f"Найдены телефоны в первом запросе: {stage1_phones}")
+            return {
+                "phones": stage1_phones,
+                "primary_phone": stage1_phones[0] if stage1_phones else None,
+                "method": "direct_extract",
+                "confidence": 0.9,
+                "source": "first_request"
+            }
+
+        # УЛУЧШЕНИЕ 3: Расширенное извлечение данных из первого запроса
+        emails, _, _, vk_ids = analyze_first_stage_results(response, query_data["full_query"])
+
+        logger.info(f"Извлечено {len(emails)} email адресов: {emails[:5]}")
+        logger.info(f"Извлечено {len(vk_ids)} VK ID: {vk_ids[:5]}")
+
+        # УЛУЧШЕНИЕ 4: Альтернативные запросы если не найдены email или телефоны
+        if not emails and not stage1_phones:
+            # Пробуем альтернативные форматы запроса
+            logger.info("Не найдены ни телефоны, ни email, пробуем альтернативные запросы")
+
+            # Вариант 1: Только фамилия + дата
+            alt_query1 = f"{surname} {birth_date}"
+            logger.info(f"Альтернативный запрос 1: {alt_query1}")
+
+            alt_response1 = await loop.run_in_executor(
                 None,
-                lambda: api_client.make_request(query=emails[0])
+                lambda: api_client.search_by_name_dob(alt_query1)
             )
 
-            # Извлекаем телефоны из второго запроса
-            stage2_phones_raw = extract_phones_from_api_response(email_response)
-            logger.info(f"Извлечено {len(stage2_phones_raw)} телефонов из email-запроса")
+            # Проверяем наличие пометки в альтернативном запросе
+            alt_response1_str = str(alt_response1)
+            if "Номер который нужно забирать" in alt_response1_str:
+                logger.info("Найдена пометка 'Номер который нужно забирать' в альтернативном запросе 1")
 
-            # Конвертируем в нужный формат
-            stage2_phones = []
-            for phone in stage2_phones_raw:
-                stage2_phones.append({
-                    "phone": phone,
-                    "priority": 7,  # Более высокий приоритет для email
-                    "confirmed_count": 0,
-                    "source": {
-                        "_source_db": "email_search"
+                marked_phones = []
+                for pattern in marked_patterns:
+                    matches = re.findall(pattern, alt_response1_str)
+                    for match in matches:
+                        digits = ''.join(c for c in match if c.isdigit())
+                        if digits.startswith('79') and len(digits) == 11 and digits not in marked_phones:
+                            marked_phones.append(digits)
+                            logger.info(f"Найден приоритетный телефон с пометкой в альт. запросе 1: {digits}")
+
+                if marked_phones:
+                    return {
+                        "phones": marked_phones,
+                        "primary_phone": marked_phones[0],
+                        "method": "marked_phone_alt1",
+                        "confidence": 0.95,
+                        "source": "alt_query1_marked"
                     }
-                })
 
-            # Обновляем счетчики подтверждений для телефонов из первого этапа
-            for s1_entry in phone_entries:
-                for s2_entry in stage2_phones:
-                    if s1_entry["phone"] == s2_entry["phone"]:
-                        s1_entry["confirmed_count"] = s1_entry.get("confirmed_count", 0) + 1
-                        s2_entry["confirmed_by_stage1"] = True
-
-            # Объединяем телефоны из обоих этапов
-            all_phones = phone_entries + [p for p in stage2_phones if
-                                          not any(p["phone"] == s1p["phone"] for s1p in phone_entries)]
-            # Сортируем по приоритету и подтверждениям
-            all_phones.sort(key=lambda x: (x.get("confirmed_count", 0), x["priority"]), reverse=True)
-
-            if all_phones:
-                best_phone = all_phones[0]
-                confidence = evaluate_phone_confidence(best_phone, query_data)
-
+            alt_phones1 = extract_phones_from_api_response(alt_response1)
+            if alt_phones1:
+                logger.info(f"Найдены телефоны в альтернативном запросе 1: {alt_phones1}")
                 return {
-                    "phones": [p["phone"] for p in all_phones[:3]],  # Топ-3 телефона
-                    "primary_phone": best_phone["phone"],
-                    "method": "two_stage_search",
-                    "confidence": confidence,
-                    "source": best_phone["source"]
+                    "phones": alt_phones1,
+                    "primary_phone": alt_phones1[0] if alt_phones1 else None,
+                    "method": "alternative_query1",
+                    "confidence": 0.8,
+                    "source": "alternative_query1"
                 }
 
-        # Если даже после второго этапа ничего не найдено
-        if phone_entries:
-            # Возвращаем лучший из имеющихся телефонов
-            best_phone = phone_entries[0]
-            confidence = evaluate_phone_confidence(best_phone, query_data)
+            alt_emails1, _, _, alt_vk_ids1 = analyze_first_stage_results(alt_response1, alt_query1)
+            if alt_emails1:
+                emails.extend([e for e in alt_emails1 if e not in emails])
+                logger.info(f"Найдены дополнительные email в альтернативном запросе 1: {alt_emails1}")
 
-            return {
-                "phones": [p["phone"] for p in phone_entries[:3]],
-                "primary_phone": best_phone["phone"],
-                "method": "best_effort",
-                "confidence": confidence,
-                "source": best_phone["source"]
-            }
+            if alt_vk_ids1:
+                vk_ids.extend([v for v in alt_vk_ids1 if v not in vk_ids])
+
+            # Проверяем, нашли ли мы email или телефоны
+            if not emails and not alt_phones1:
+                # Вариант 2: Только имя + дата
+                if firstname:
+                    alt_query2 = f"{firstname} {birth_date}"
+                    logger.info(f"Альтернативный запрос 2: {alt_query2}")
+
+                    alt_response2 = await loop.run_in_executor(
+                        None,
+                        lambda: api_client.search_by_name_dob(alt_query2)
+                    )
+
+                    # Проверяем наличие пометки в альтернативном запросе 2
+                    alt_response2_str = str(alt_response2)
+                    if "Номер который нужно забирать" in alt_response2_str:
+                        logger.info("Найдена пометка 'Номер который нужно забирать' в альтернативном запросе 2")
+
+                        marked_phones = []
+                        for pattern in marked_patterns:
+                            matches = re.findall(pattern, alt_response2_str)
+                            for match in matches:
+                                digits = ''.join(c for c in match if c.isdigit())
+                                if digits.startswith('79') and len(digits) == 11 and digits not in marked_phones:
+                                    marked_phones.append(digits)
+                                    logger.info(f"Найден приоритетный телефон с пометкой в альт. запросе 2: {digits}")
+
+                        if marked_phones:
+                            return {
+                                "phones": marked_phones,
+                                "primary_phone": marked_phones[0],
+                                "method": "marked_phone_alt2",
+                                "confidence": 0.92,
+                                "source": "alt_query2_marked"
+                            }
+
+                    alt_phones2 = extract_phones_from_api_response(alt_response2)
+                    if alt_phones2:
+                        logger.info(f"Найдены телефоны в альтернативном запросе 2: {alt_phones2}")
+                        return {
+                            "phones": alt_phones2,
+                            "primary_phone": alt_phones2[0] if alt_phones2 else None,
+                            "method": "alternative_query2",
+                            "confidence": 0.7,
+                            "source": "alternative_query2"
+                        }
+
+                    alt_emails2, _, _, alt_vk_ids2 = analyze_first_stage_results(alt_response2, alt_query2)
+                    if alt_emails2:
+                        emails.extend([e for e in alt_emails2 if e not in emails])
+                        logger.info(f"Найдены дополнительные email в альтернативном запросе 2: {alt_emails2}")
+
+                    if alt_vk_ids2:
+                        vk_ids.extend([v for v in alt_vk_ids2 if v not in vk_ids])
+
+        # УЛУЧШЕНИЕ 5: Поиск по VK ID если нет email
+        if not emails and vk_ids:
+            logger.info(f"Не найден email, но есть VK ID: {vk_ids[0]}, пробуем поиск по нему")
+            vk_response = await loop.run_in_executor(
+                None,
+                lambda: api_client.search_vk_id(vk_ids[0])
+            )
+
+            # Проверяем наличие пометки в ответе на запрос по VK ID
+            vk_response_str = str(vk_response)
+            if "Номер который нужно забирать" in vk_response_str:
+                logger.info("Найдена пометка 'Номер который нужно забирать' в ответе на запрос по VK ID")
+
+                marked_phones = []
+                for pattern in marked_patterns:
+                    matches = re.findall(pattern, vk_response_str)
+                    for match in matches:
+                        digits = ''.join(c for c in match if c.isdigit())
+                        if digits.startswith('79') and len(digits) == 11 and digits not in marked_phones:
+                            marked_phones.append(digits)
+                            logger.info(f"Найден приоритетный телефон с пометкой в запросе по VK ID: {digits}")
+
+                if marked_phones:
+                    return {
+                        "phones": marked_phones,
+                        "primary_phone": marked_phones[0],
+                        "method": "marked_phone_vk_id",
+                        "confidence": 0.9,
+                        "source": f"vk_id:{vk_ids[0]}"
+                    }
+
+            vk_phones = extract_phones_from_api_response(vk_response)
+            if vk_phones:
+                logger.info(f"Найдены телефоны в поиске по VK ID: {vk_phones}")
+                return {
+                    "phones": vk_phones,
+                    "primary_phone": vk_phones[0] if vk_phones else None,
+                    "method": "vk_id_search",
+                    "confidence": 0.75,
+                    "source": f"vk_id:{vk_ids[0]}"
+                }
+
+            vk_emails, _, _, _ = analyze_first_stage_results(vk_response, f"vk:{vk_ids[0]}")
+            if vk_emails:
+                emails.extend([e for e in vk_emails if e not in emails])
+                logger.info(f"Найдены дополнительные email в поиске по VK ID: {vk_emails}")
+
+        # УЛУЧШЕНИЕ 6: Этап 2 - поиск по email с оптимизированной логикой
+        if emails:
+            logger.info(f"Начинаем поиск по email. Найдено {len(emails)} адресов.")
+
+            # Проверяем все найденные email, начиная с наиболее вероятного
+            for email_idx, email in enumerate(emails[:min(5, len(emails))]):  # Проверяем до 5 email
+                logger.info(f"Проверяем email #{email_idx + 1}: {email}")
+
+                email_response = await loop.run_in_executor(
+                    None,
+                    lambda: api_client.make_request(query=email)
+                )
+
+                # Проверяем наличие пометки в ответе на запрос по email
+                email_response_str = str(email_response)
+                if "Номер который нужно забирать" in email_response_str:
+                    logger.info(f"Найдена пометка 'Номер который нужно забирать' в ответе на запрос по email '{email}'")
+
+                    marked_phones = []
+                    for pattern in marked_patterns:
+                        matches = re.findall(pattern, email_response_str)
+                        for match in matches:
+                            digits = ''.join(c for c in match if c.isdigit())
+                            if digits.startswith('79') and len(digits) == 11 and digits not in marked_phones:
+                                marked_phones.append(digits)
+                                logger.info(f"Найден приоритетный телефон с пометкой в запросе по email: {digits}")
+
+                    if marked_phones:
+                        return {
+                            "phones": marked_phones,
+                            "primary_phone": marked_phones[0],
+                            "method": "marked_phone_email",
+                            "confidence": 0.95,
+                            "source": f"email:{email}"
+                        }
+
+                # Прямой поиск телефонов в ответе на email-запрос
+                email_phones = extract_phones_from_api_response(email_response)
+
+                if email_phones:
+                    logger.info(f"Найдено {len(email_phones)} телефонов в поиске по email {email}")
+
+                    # Оценка достоверности найденных телефонов
+                    validated_phones = []
+
+                    for phone in email_phones:
+                        # Проверяем формат телефона (должен начинаться с 79 и иметь длину 11 символов)
+                        if phone.startswith('79') and len(phone) == 11:
+                            validated_phones.append(phone)
+
+                    if validated_phones:
+                        confidence = 0.85  # Высокая уверенность для телефонов, найденных по email
+
+                        # Если в email есть часть имени или фамилии, увеличиваем уверенность
+                        if surname.lower() in email.lower() or firstname.lower() in email.lower():
+                            confidence = 0.95
+
+                        return {
+                            "phones": validated_phones,
+                            "primary_phone": validated_phones[0],
+                            "method": "email_search",
+                            "confidence": confidence,
+                            "source": f"email:{email}"
+                        }
+
+            logger.warning(f"Поиск по всем доступным email не дал результатов")
 
         return {
             "phones": [],
             "method": "no_results",
-            "confidence": 0.0
+            "confidence": 0.0,
+            "error": "Не удалось найти телефонные номера"
         }
 
     except Exception as e:
         logger.error(f"Ошибка при выполнении поиска: {e}")
+        logger.error(traceback.format_exc())
         return {"error": f"Ошибка при выполнении поиска: {str(e)}"}
