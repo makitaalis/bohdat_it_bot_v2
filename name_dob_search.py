@@ -992,7 +992,7 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
             entry["confirmed_count"] = phone_counts[entry["phone"]] - 1
 
         # Если есть телефоны с высоким приоритетом (8+), возвращаем лучший
-        high_priority_phones = [p for p in stage1_phones if p["priority"] >= 8]
+        high_priority_phones = [p for p in phone_entries if p["priority"] >= 8]
         if high_priority_phones:
             best_phone = high_priority_phones[0]
             confidence = evaluate_phone_confidence(best_phone, query_data)

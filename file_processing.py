@@ -1054,38 +1054,42 @@ def evaluate_phone_confidence(phone_entry, query_data):
     confidence = 0.5  # Базовое значение
 
     # Фактор 1: Приоритет базы (до +0.3)
-    if phone_entry["priority"] >= 8:
-        confidence += 0.3
-    elif phone_entry["priority"] >= 5:
-        confidence += 0.2
-    elif phone_entry["priority"] >= 3:
-        confidence += 0.1
+    if "priority" in phone_entry:
+        if phone_entry["priority"] >= 8:
+            confidence += 0.3
+        elif phone_entry["priority"] >= 5:
+            confidence += 0.2
+        elif phone_entry["priority"] >= 3:
+            confidence += 0.1
 
     # Фактор 2: Проверка совпадения ФИО (до +0.3)
-    record = phone_entry["record"]
     name_match = 0.0
 
-    for field, value in record.items():
-        field_lower = field.lower()
-        # Проверка фамилии
-        if "фамилия" in field_lower or "lastname" in field_lower:
-            if query_data["surname"].lower() in str(value).lower():
-                name_match += 0.15
-        # Проверка имени
-        if "имя" in field_lower or "firstname" in field_lower:
-            if query_data["name"].lower() in str(value).lower():
-                name_match += 0.15
+    # Проверяем наличие ключа "record"
+    if "record" in phone_entry:
+        record = phone_entry["record"]
 
-    confidence += name_match
+        for field, value in record.items():
+            field_lower = field.lower()
+            # Проверка фамилии
+            if "фамилия" in field_lower or "lastname" in field_lower:
+                if query_data["surname"].lower() in str(value).lower():
+                    name_match += 0.15
+            # Проверка имени
+            if "имя" in field_lower or "firstname" in field_lower:
+                if query_data["name"].lower() in str(value).lower():
+                    name_match += 0.15
 
-    # Фактор 3: Проверка даты рождения (до +0.2)
-    for field, value in record.items():
-        field_lower = field.lower()
-        if "рождения" in field_lower or "birth" in field_lower or "дата" in field_lower:
-            # Проверка точного или частичного совпадения даты
-            if query_data["birth_date"] in str(value) or query_data["birth_date"].replace(".", "-") in str(value):
-                confidence += 0.2
-                break
+        confidence += name_match
+
+        # Фактор 3: Проверка даты рождения (до +0.2)
+        for field, value in record.items():
+            field_lower = field.lower()
+            if "рождения" in field_lower or "birth" in field_lower or "дата" in field_lower:
+                # Проверка точного или частичного совпадения даты
+                if query_data["birth_date"] in str(value) or query_data["birth_date"].replace(".", "-") in str(value):
+                    confidence += 0.2
+                    break
 
     # Фактор 4: Совпадение с другими найденными номерами (+0.2)
     if phone_entry.get("confirmed_count", 0) > 0:
