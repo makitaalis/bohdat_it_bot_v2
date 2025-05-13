@@ -38,7 +38,7 @@ from api_client import api_client
 from formatter import formatter
 from database import db
 from file_processing import extract_vk_links, extract_vk_id, extract_phone_from_vk_parsing, create_results_file, \
-    process_vk_links
+    process_vk_links, process_name_dob_queries
 
 # Dictionary for caching results
 cached_results = {}
@@ -220,6 +220,23 @@ async def cmd_vk(message: types.Message):
             reply_markup=get_main_keyboard()
         )
 
+@dp.message_handler(commands=["process_name_dob"])
+async def cmd_process_name_dob(message: types.Message):
+    """Обработчик команды /process_name_dob для пакетной обработки запросов ФИО + дата рождения"""
+    user_id = message.from_user.id
+    username = message.from_user.username
+
+    # Логируем действие
+    log_user_action(user_id, username, "requested name+dob batch processing")
+
+    # Запрашиваем файл
+    await message.answer(
+        "📂 Пожалуйста, загрузите текстовый файл (.txt) с запросами в формате 'Фамилия Имя ДД.ММ.ГГГГ'.\n\n"
+        "Каждый запрос должен быть на отдельной строке, например:\n"
+        "Иванов Иван 01.01.2000\n"
+        "Петров Петр 15.05.2001",
+        reply_markup=get_cancel_keyboard()
+    )
 
 @dp.message_handler(commands=["phone"])
 async def cmd_phone(message: types.Message):
@@ -284,6 +301,32 @@ async def cmd_phone(message: types.Message):
             reply_markup=get_main_keyboard()
         )
 
+
+@dp.message_handler(lambda message: message.text == "📋 Пакетный поиск по ФИО + ДР")
+async def button_batch_name_dob_search(message: types.Message):
+    """Обработчик кнопки пакетного поиска по ФИО + дате рождения"""
+    user_id = message.from_user.id
+    username = message.from_user.username
+
+    # Логируем действие
+    log_user_action(user_id, username, "requested batch name+dob search")
+
+    # Запрашиваем файл
+    await message.answer(
+        "📋 <b>Пакетный поиск по ФИО и дате рождения</b>\n\n"
+        "Загрузите текстовый файл (.txt) с запросами в формате:\n"
+        "<code>Фамилия Имя ДД.ММ.ГГГГ</code>\n\n"
+        "Каждый запрос должен быть на отдельной строке, например:\n"
+        "<code>Иванов Иван 01.01.2000</code>\n"
+        "<code>Петрова Анна 15.05.2005</code>\n\n"
+        "⚠️ <b>Важно:</b>\n"
+        "• Формат даты: ДД.ММ.ГГГГ\n"
+        "• Один запрос на строку\n"
+        "• Максимум 2000 запросов\n"
+        "• Обработка может занять некоторое время",
+        parse_mode="HTML",
+        reply_markup=get_cancel_keyboard()
+    )
 
 @dp.message_handler(commands=["process_file"])
 async def cmd_process_file(message: types.Message):
@@ -383,7 +426,15 @@ async def handle_document(message: types.Message):
 
 
 async def handle_name_dob_file(message, queries, user_id, download_msg):
-    """Обработчик файла с запросами ФИО + дата рождения"""
+    """
+    Обработчик файла с запросами ФИО + дата рождения
+
+    Args:
+        message: Telegram сообщение
+        queries: Список запросов в формате "Фамилия Имя ДД.ММ.ГГГГ"
+        user_id: ID пользователя
+        download_msg: Сообщение о загрузке файла
+    """
     # Ограничиваем количество запросов
     max_queries = 500
     if len(queries) > max_queries:
@@ -425,14 +476,13 @@ async def handle_name_dob_file(message, queries, user_id, download_msg):
 
     try:
         # Обрабатываем запросы
-        results = await process_vk_links_advanced(
+        results = await process_name_dob_queries(
             queries,
             user_id,
             message.chat.id,
             download_msg.message_id,
             bot,
-            db,
-            is_name_dob_format=True  # Указываем, что это запросы ФИО + ДР
+            db
         )
 
         # Рассчитываем затраченное время
@@ -1410,26 +1460,32 @@ async def cmd_search(message: types.Message):
 
         # Формируем сообщение с результатами
         phones = results.get("phones", [])
+        primary_phone = results.get("primary_phone")  # Получаем лучший телефон
         confidence = results.get("confidence", 0.0)
         method = results.get("method", "unknown")
 
         # Дополнительное логирование результатов
         logger.info(f"Результаты поиска: найдено {len(phones)} телефонов, метод: {method}, уверенность: {confidence}")
 
-        # Проверяем, найдены ли телефоны
-        if phones:
-            # Формируем текст сообщения с найденными телефонами
+        # Проверяем, найден ли лучший телефон
+        if primary_phone:
+            # Формируем текст сообщения с выделением лучшего телефона
             message_text = (
                 f"✅ <b>Результаты поиска по запросу:</b> {html.escape(query)}\n\n"
-                f"📱 <b>Найдено телефонов:</b> {len(phones)}\n"
+                f"📱 <b>Основной телефон:</b> <code>{primary_phone}</code>\n"
                 f"🔍 <b>Метод поиска:</b> {method_to_text(method)}\n"
-                f"📊 <b>Уверенность:</b> {int(confidence * 100)}%\n\n"
-                f"<b>Телефоны:</b>\n"
+                f"📊 <b>Уверенность:</b> {int(confidence * 100)}%\n"
             )
 
-            # Добавляем список телефонов
-            for i, phone in enumerate(phones, 1):
-                message_text += f"{i}. <code>{phone}</code>\n"
+            # Если найдены дополнительные телефоны, добавляем их списком
+            if len(phones) > 1:
+                message_text += f"\n<b>Дополнительные телефоны ({len(phones) - 1}):</b>\n"
+                other_phones = [p for p in phones if p != primary_phone]
+                for i, phone in enumerate(other_phones[:3], 1):  # Показываем только первые 3 дополнительных
+                    message_text += f"{i}. <code>{phone}</code>\n"
+
+                if len(other_phones) > 3:
+                    message_text += f"...и еще {len(other_phones) - 3} номер(ов)\n"
         else:
             # Если телефоны не найдены
             error_message = results.get("error", "Телефоны не найдены")
@@ -2097,7 +2153,8 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(KeyboardButton("🔍 Поиск по ФИО + ДР"), KeyboardButton("🔍 Поиск по VK ID"))
     keyboard.add(KeyboardButton("📱 Поиск по телефону"), KeyboardButton("📂 Обработка файла"))
-    keyboard.add(KeyboardButton("⚙️ Настройки"), KeyboardButton("❓ Помощь"))
+    keyboard.add(KeyboardButton("📋 Пакетный поиск по ФИО + ДР"), KeyboardButton("⚙️ Настройки"))
+    keyboard.add(KeyboardButton("❓ Помощь"))
     return keyboard
 
 

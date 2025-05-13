@@ -6,19 +6,19 @@ Functions for processing VK ID files and extracting phone numbers
 """
 
 import asyncio
-import logging
-import re
-from datetime import datetime
-from typing import List, Tuple, Optional, Union, Dict, Any
 import os
+import re
+import time
 import traceback
-from unittest import result
+from datetime import datetime
+from typing import List, Tuple, Optional, Union, Dict
 
 import aiogram.utils.exceptions  # Добавляем этот импорт
 import aiogram.utils.exceptions
 
-from api_client import extract_phones_recursive, SOURCE_PRIORITY
-from database import db
+from api_client import extract_phones_recursive
+# Импорт функции advanced_search
+from advanced_search import search_by_name_dob as advanced_search
 
 # Импортируем openpyxl для работы с Excel
 try:
@@ -374,7 +374,7 @@ async def process_vk_links(items: List[str], user_id: int, chat_id: int, message
             return results
 
         # Начинаем с меньшего размера батча и увеличиваем его при успешных запросах
-        initial_batch_size = 5
+        initial_batch_size = 1
         max_batch_size = 30
         current_batch_size = initial_batch_size
 
@@ -508,7 +508,7 @@ async def process_vk_links(items: List[str], user_id: int, chat_id: int, message
                 batch_index += 1
 
                 # Небольшая задержка между пакетами для снижения нагрузки
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(4)
 
             except Exception as e:
                 logger.error(f"Error processing batch {batch_index + 1}: {e}")
@@ -667,7 +667,7 @@ async def process_vk_links(items: List[str], user_id: int, chat_id: int, message
                     fail_count += 1
 
                 # Небольшая задержка между запросами
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(3)
 
             except Exception as e:
                 logger.error(f"Error processing name+dob query {i}/{total}: {e}")
@@ -790,6 +790,182 @@ def extract_phones_improved(response: dict, batch_vk_ids: List[str]) -> Dict[str
 
     return result
 
+
+async def process_name_dob_queries(queries, user_id, chat_id, message_id, bot_instance, db_instance):
+    """
+    Последовательная (не пакетная) обработка запросов ФИО + дата рождения
+
+    Args:
+        queries (List[str]): Список запросов в формате "Фамилия Имя ДД.ММ.ГГГГ"
+        user_id (int): ID пользователя
+        chat_id (int): ID чата
+        message_id (int): ID сообщения для обновления
+        bot_instance: Экземпляр бота
+        db_instance: Экземпляр базы данных
+
+    Returns:
+        List[Tuple[str, List[str]]]: Список пар (запрос, список телефонов)
+    """
+    if not queries:
+        return []
+
+    results = []
+    total = len(queries)
+    processed = 0
+
+    # Получаем настройки пользователя
+    user_settings = db_instance.get_user_settings(user_id)
+
+    # Счетчики для статистики
+    success_count = 0
+    fail_count = 0
+
+    # Флаг для отслеживания возможности редактирования сообщения
+    can_edit_message = True
+    update_message_id = message_id
+
+    # Функция для безопасного обновления сообщения о прогрессе
+    async def safe_update_progress(text):
+        nonlocal can_edit_message, update_message_id
+
+        if can_edit_message:
+            try:
+                await bot_instance.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=update_message_id,
+                    text=text
+                )
+            except Exception as e:
+                logger.warning(f"Не удалось отредактировать сообщение: {e}. Отправляем новое.")
+                can_edit_message = False
+                new_msg = await bot_instance.send_message(
+                    chat_id=chat_id,
+                    text=text
+                )
+                update_message_id = new_msg.message_id
+        else:
+            try:
+                new_msg = await bot_instance.send_message(
+                    chat_id=chat_id,
+                    text=text
+                )
+                update_message_id = new_msg.message_id
+            except Exception as e:
+                logger.error(f"Ошибка при отправке сообщения о прогрессе: {e}")
+
+    await safe_update_progress(
+        f"🔍 Начинаю последовательную обработку {len(queries)} запросов.\n"
+        f"⏳ Пожалуйста, подождите..."
+    )
+
+    # Обрабатываем каждый запрос по отдельности
+    for i, query in enumerate(queries):
+        # Обновляем прогресс каждые 3 запроса или для первого/последнего
+        if i % 3 == 0 or i == 0 or i == total - 1:
+            progress_percent = (i / total) * 100
+            await safe_update_progress(
+                f"🔄 Обработка запроса {i + 1}/{total} ({progress_percent:.1f}%)...\n"
+                f"✅ Успешно: {success_count} | ❌ Ошибок: {fail_count}\n"
+                f"🔍 Текущий запрос: {query}"
+            )
+
+        try:
+            # Обрабатываем запрос и дожидаемся результата
+            result = await process_single_name_dob_query(query, user_id, user_settings)
+
+            # Извлекаем телефоны из результата
+            phones = result.get("phones", [])
+
+            # Добавляем результат в общий список
+            results.append((query, phones))
+
+            # Обновляем статистику
+            if phones:
+                success_count += 1
+            else:
+                fail_count += 1
+
+            # Добавляем более длительную паузу между запросами
+            await asyncio.sleep(2.0)  # Увеличенная пауза для гарантии полной обработки
+
+        except Exception as e:
+            logger.error(f"Ошибка при обработке запроса '{query}': {e}")
+            logger.error(traceback.format_exc())
+            results.append((query, []))
+            fail_count += 1
+            # Продолжаем с следующим запросом после ошибки
+
+        processed += 1
+
+    # Финальное обновление прогресса
+    phones_found = sum(1 for _, phones in results if phones and len(phones) > 0)
+    total_phones = sum(len(phones) for _, phones in results if phones)
+
+    await safe_update_progress(
+        f"✅ Обработка завершена: {total} запросов (100%)\n"
+        f"✅ Успешно: {success_count} | ❌ Ошибок: {fail_count}\n"
+        f"📱 Найдено {phones_found} записей с номерами (всего {total_phones} номеров)"
+    )
+
+    return results
+
+
+async def process_single_name_dob_query(query, user_id, user_settings):
+    """
+    Обработка одного запроса ФИО + дата рождения
+
+    Args:
+        query (str): Запрос в формате "Фамилия Имя ДД.ММ.ГГГГ"
+        user_id (int): ID пользователя
+        user_settings (dict): Настройки пользователя
+
+    Returns:
+        dict: Результат поиска
+    """
+    try:
+        # Преобразуем формат даты из ДД.ММ.ГГГГ в ГГГГ-ММ-ДД для API
+        parts = query.split()
+        name_parts = parts[:-1]  # Все кроме последней части (даты)
+        date_part = parts[-1]  # Последняя часть - дата
+
+        # Преобразуем дату, если она в формате ДД.ММ.ГГГГ
+        if '.' in date_part:
+            day, month, year = date_part.split('.')
+            iso_date = f"{year}-{month}-{day}"
+        else:
+            iso_date = date_part
+
+        # Формируем строку запроса с ISO-форматом даты
+        search_query = f"{' '.join(name_parts)} {iso_date}"
+
+        # Запускаем синхронную функцию в отдельном потоке
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: advanced_search(
+                query=search_query,
+                lang=user_settings.get("language", "ru"),
+                limit=user_settings.get("limit", 300)
+            )
+        )
+
+        # Проверяем и логируем результаты
+        if "phones" in result and result["phones"]:
+            logger.info(f"Найдено {len(result['phones'])} телефонов для запроса '{query}'")
+            for phone in result["phones"]:
+                logger.info(f"  - Телефон: {phone}")
+
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка при обработке запроса '{query}': {e}")
+        logger.error(traceback.format_exc())
+        return {
+            "query": query,
+            "phones": [],
+            "method": "error",
+            "confidence": 0.0,
+            "error": str(e)
+        }
 
 def analyze_first_stage_results(response: dict, query: str) -> Tuple[List[str], List[str], float, List[str]]:
     """

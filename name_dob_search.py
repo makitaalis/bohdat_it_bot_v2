@@ -935,6 +935,72 @@ def select_best_phone(scored_phones: List[Dict[str, Any]]) -> Optional[Dict[str,
     return best_phone
 
 
+# Добавить в файл name_dob_search.py после функции select_best_phone
+
+def get_single_best_phone(phones: List[str], response: Dict[str, Any], query_data: Dict[str, str]) -> Optional[str]:
+    """
+    Выбирает один лучший номер телефона из списка найденных.
+
+    Args:
+        phones (List[str]): Список найденных телефонов
+        response (Dict[str, Any]): Полный ответ API
+        query_data (Dict[str, str]): Данные запроса (ФИО, дата рождения)
+
+    Returns:
+        Optional[str]: Один лучший номер телефона или None
+    """
+    if not phones:
+        return None
+
+    # Создаем словарь для оценки телефонов
+    phone_scores = {}
+
+    # Приоритизация телефонов с пометкой "Номер который нужно забирать"
+    response_str = str(response)
+    for phone in phones:
+        score = 0
+
+        # Базовый приоритет - обратный порядок в списке (первые телефоны уже из приоритетных источников)
+        base_priority = len(phones) - phones.index(phone)
+        score += base_priority
+
+        # Проверка на наличие пометки "Номер который нужно забирать"
+        if f"Телефон: {phone}" in response_str and "Номер который нужно забирать" in response_str:
+            score += 1000  # Огромный бонус для телефонов с такой пометкой
+
+        # Дополнительно ищем записи с полным совпадением имени и даты
+        for db_name, db_info in response.get("List", {}).items():
+            if db_name == "No results found" or "Data" not in db_info:
+                continue
+
+            for record in db_info.get("Data", []):
+                record_str = str(record)
+
+                # Если запись содержит этот телефон
+                if phone in record_str:
+                    # Проверяем совпадение фамилии
+                    if query_data["surname"].lower() in record_str.lower():
+                        score += 50
+
+                    # Проверяем совпадение имени
+                    if query_data["name"].lower() in record_str.lower():
+                        score += 30
+
+                    # Проверяем совпадение даты рождения
+                    if query_data["birth_date"] in record_str:
+                        score += 40
+
+        # Проверка формата телефона (предпочтение российским мобильным)
+        if phone.startswith('79') and len(phone) == 11:
+            score += 20
+
+        phone_scores[phone] = score
+
+    # Выбираем телефон с наивысшим скором
+    best_phone = sorted(phone_scores.items(), key=lambda x: x[1], reverse=True)[0][0]
+
+    return best_phone
+
 async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_client) -> Dict[str, Any]:
     """
     Улучшенный двухэтапный поиск телефона по имени и дате рождения
@@ -1000,9 +1066,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                         logger.info(f"Найден приоритетный телефон с пометкой: {digits}")
 
             if marked_phones:
+                best_phone = get_single_best_phone(marked_phones, response, query_data)
                 return {
                     "phones": marked_phones,
-                    "primary_phone": marked_phones[0],
+                    "primary_phone": best_phone or marked_phones[0],
                     "method": "marked_phone_first_stage",
                     "confidence": 0.98,  # Очень высокая уверенность
                     "source": "first_stage_marked"
@@ -1014,9 +1081,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
         # Если нашли телефоны в первом запросе
         if stage1_phones:
             logger.info(f"Найдены телефоны в первом запросе: {stage1_phones}")
+            best_phone = get_single_best_phone(stage1_phones, response, query_data)
             return {
                 "phones": stage1_phones,
-                "primary_phone": stage1_phones[0] if stage1_phones else None,
+                "primary_phone": best_phone,
                 "method": "direct_extract",
                 "confidence": 0.9,
                 "source": "first_request"
@@ -1057,9 +1125,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                             logger.info(f"Найден приоритетный телефон с пометкой в альт. запросе 1: {digits}")
 
                 if marked_phones:
+                    best_phone = get_single_best_phone(marked_phones, alt_response1, query_data)
                     return {
                         "phones": marked_phones,
-                        "primary_phone": marked_phones[0],
+                        "primary_phone": best_phone or marked_phones[0],
                         "method": "marked_phone_alt1",
                         "confidence": 0.95,
                         "source": "alt_query1_marked"
@@ -1068,9 +1137,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
             alt_phones1 = extract_phones_from_api_response(alt_response1)
             if alt_phones1:
                 logger.info(f"Найдены телефоны в альтернативном запросе 1: {alt_phones1}")
+                best_phone = get_single_best_phone(alt_phones1, alt_response1, query_data)
                 return {
                     "phones": alt_phones1,
-                    "primary_phone": alt_phones1[0] if alt_phones1 else None,
+                    "primary_phone": best_phone,
                     "method": "alternative_query1",
                     "confidence": 0.8,
                     "source": "alternative_query1"
@@ -1111,9 +1181,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                                     logger.info(f"Найден приоритетный телефон с пометкой в альт. запросе 2: {digits}")
 
                         if marked_phones:
+                            best_phone = get_single_best_phone(marked_phones, alt_response2, query_data)
                             return {
                                 "phones": marked_phones,
-                                "primary_phone": marked_phones[0],
+                                "primary_phone": best_phone or marked_phones[0],
                                 "method": "marked_phone_alt2",
                                 "confidence": 0.92,
                                 "source": "alt_query2_marked"
@@ -1122,9 +1193,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                     alt_phones2 = extract_phones_from_api_response(alt_response2)
                     if alt_phones2:
                         logger.info(f"Найдены телефоны в альтернативном запросе 2: {alt_phones2}")
+                        best_phone = get_single_best_phone(alt_phones2, alt_response2, query_data)
                         return {
                             "phones": alt_phones2,
-                            "primary_phone": alt_phones2[0] if alt_phones2 else None,
+                            "primary_phone": best_phone,
                             "method": "alternative_query2",
                             "confidence": 0.7,
                             "source": "alternative_query2"
@@ -1161,9 +1233,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                             logger.info(f"Найден приоритетный телефон с пометкой в запросе по VK ID: {digits}")
 
                 if marked_phones:
+                    best_phone = get_single_best_phone(marked_phones, vk_response, query_data)
                     return {
                         "phones": marked_phones,
-                        "primary_phone": marked_phones[0],
+                        "primary_phone": best_phone or marked_phones[0],
                         "method": "marked_phone_vk_id",
                         "confidence": 0.9,
                         "source": f"vk_id:{vk_ids[0]}"
@@ -1172,9 +1245,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
             vk_phones = extract_phones_from_api_response(vk_response)
             if vk_phones:
                 logger.info(f"Найдены телефоны в поиске по VK ID: {vk_phones}")
+                best_phone = get_single_best_phone(vk_phones, vk_response, query_data)
                 return {
                     "phones": vk_phones,
-                    "primary_phone": vk_phones[0] if vk_phones else None,
+                    "primary_phone": best_phone,
                     "method": "vk_id_search",
                     "confidence": 0.75,
                     "source": f"vk_id:{vk_ids[0]}"
@@ -1213,9 +1287,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                                 logger.info(f"Найден приоритетный телефон с пометкой в запросе по email: {digits}")
 
                     if marked_phones:
+                        best_phone = get_single_best_phone(marked_phones, email_response, query_data)
                         return {
                             "phones": marked_phones,
-                            "primary_phone": marked_phones[0],
+                            "primary_phone": best_phone or marked_phones[0],
                             "method": "marked_phone_email",
                             "confidence": 0.95,
                             "source": f"email:{email}"
@@ -1242,9 +1317,10 @@ async def search_phone_by_name_and_birth_date(name: str, birth_date: str, api_cl
                         if surname.lower() in email.lower() or firstname.lower() in email.lower():
                             confidence = 0.95
 
+                        best_phone = get_single_best_phone(validated_phones, email_response, query_data)
                         return {
                             "phones": validated_phones,
-                            "primary_phone": validated_phones[0],
+                            "primary_phone": best_phone,
                             "method": "email_search",
                             "confidence": confidence,
                             "source": f"email:{email}"

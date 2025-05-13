@@ -17,12 +17,12 @@ if env_path.exists():
 # Токены и ключи
 # Приоритет: 1. Переменные окружения 2. .env файл 3. Значения по умолчанию (только для разработки)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8148730915:AAGDGAJIq-eMLMoCpPYU0zgPesVTlANJ8hs")
-LEAKOSINT_API_TOKEN = os.getenv("LEAKOSINT_API_TOKEN", "5505987961:FOMLSZaT")
+LEAKOSINT_API_TOKEN = os.getenv("LEAKOSINT_API_TOKEN", "6533586336:D6nPS1BM")
 
 # Параметры API
 API_URL = os.getenv("API_URL", "https://leakosintapi.com/")
 API_DEFAULT_LANG = os.getenv("API_DEFAULT_LANG", "ru")  # Язык результатов по умолчанию
-API_DEFAULT_LIMIT = int(os.getenv("API_DEFAULT_LIMIT", "300"))  # Лимит поиска по умолчанию
+API_DEFAULT_LIMIT = int(os.getenv("API_DEFAULT_LIMIT", "100"))  # Лимит поиска по умолчанию
 API_DEFAULT_TYPE = os.getenv("API_DEFAULT_TYPE", "json")  # Тип ответа по умолчанию
 
 # Параметры базы данных

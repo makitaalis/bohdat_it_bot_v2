@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List, Union
 import traceback
 from config import API_DEFAULT_LANG, API_DEFAULT_LIMIT
 from api_client import api_client
-from file_processing import extract_phones_recursive, SOURCE_PRIORITY
+from api_client import extract_phones_recursive, SOURCE_PRIORITY
 
 logger = logging.getLogger(__name__)
 
